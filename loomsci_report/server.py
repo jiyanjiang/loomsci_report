@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
+from .arxiv import search as arxiv_search
 
 DATA = Path(os.environ["LOOMSCI_APP_DATA_DIR"])
 JOBS = DATA / "jobs.json"
@@ -43,21 +44,29 @@ def update(job_id: str, **fields) -> None:
         save_jobs()
 
 
-def run_job(job_id: str, question: str) -> None:
+def run_job(job_id: str, question: str, query: str = "") -> None:
     try:
-        update(job_id, status="running", stage="planning", started_at=time.time())
-        for stage, delay in (
-            ("planning", 0.2),
-            ("searching", 0.2),
-            ("verifying", 0.2),
-            ("writing", 0.2),
-        ):
-            time.sleep(delay)
-            update(job_id, stage=stage)
+        update(job_id, status="running", stage="searching", started_at=time.time())
+        papers = arxiv_search(query or question, max_results=12)
+        update(job_id, stage="writing", found=len(papers))
+        lines = ["# Majorana zero modes and topological superconductivity", "", "## Question", "", question, ""]
+        lines += ["## Evidence map", "", "| arXiv | Year | First author | Title |", "|---|---|---|---|"]
+        for p in papers:
+            author = p.authors[0] if p.authors else "unknown"
+            lines.append(f"| {p.id} | {p.published} | {author} | {p.title} |")
+        lines += ["", "## Themes", ""]
+        if papers:
+            lines.append("The retrieved set is concentrated in topological superconductivity, Majorana modes, and material/platform studies. The table is the evidence inventory; it is not yet a synthesis of mechanisms.")
+        else:
+            lines.append("No arXiv records were returned for this query.")
+        lines += ["", "## Open questions", "", "- Which material platforms give reproducible Majorana signatures?", "- What experiments distinguish topological modes from trivial bound states?", "- What would falsify the leading interpretations?", ""]
+        lines += ["## References", ""]
+        for p in papers:
+            lines.append(f"- [{p.id}]({p.url}) {p.title} ({p.published})")
+        body = "\n".join(lines) + "\n"
         client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
-        body = "# Research Report\n\n## Question\n\n" + question + "\n\n## Status\n\nReport app skeleton completed. The online research pipeline is the next implementation step.\n"
-        item = client.create_item(app="report", type="report.report", title="", body=body, tags=["report"])
-        update(job_id, status="done", stage="done", item_id=item["id"], finished_at=time.time())
+        item = client.create_item(app="report", type="report.report", title="", body=body, tags=["report", "physics", "arxiv"])
+        update(job_id, status="done", stage="done", item_id=item["id"], papers=len(papers), finished_at=time.time())
     except Exception as exc:  # noqa: BLE001 - job boundary
         update(job_id, status="failed", stage="failed", error=str(exc), finished_at=time.time())
 
@@ -92,6 +101,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
             payload = json.loads(self.rfile.read(length) or b"{}")
             question = str(payload.get("question") or "").strip()
+            query = str(payload.get("query") or "").strip()
             if not question:
                 raise ValueError("question_required")
         except (ValueError, json.JSONDecodeError) as exc:
@@ -101,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             JOBS_MEMORY[job_id] = {"id": job_id, "question": question, "status": "queued", "stage": "queued"}
             save_jobs()
-        threading.Thread(target=run_job, args=(job_id, question), daemon=True).start()
+        threading.Thread(target=run_job, args=(job_id, question, query), daemon=True).start()
         self._json(202, {"ok": True, "job": JOBS_MEMORY[job_id]})
 
     def log_message(self, fmt: str, *args) -> None:
