@@ -46,6 +46,16 @@ LOOMSCI_USE_ARXIV=1   # opt-in enrichment; default is OpenAlex only
 
 OpenAlex abstracts are reconstructed from `abstract_inverted_index`.
 
+## Figure/table facts
+
+Only OA PDFs with an allowlisted reuse license are opened. The fact library
+stores the caption, label, page, license and source URL; the image itself is
+linked, not redistributed.
+
+```text
+cc-by / cc-by-3.0 / cc-by-4.0 / cc-by-sa / cc0 / public-domain
+```
+
 ## Evidence
 
 Sources are online APIs only. The app does not read a local arXiv database.
