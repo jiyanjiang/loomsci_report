@@ -14,19 +14,10 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, export, llm, openalex, review, workspace
+from . import arxiv, export, llm, openalex, review, style, workspace
 from . import format as report_format
 
-SYSTEM = (
-    "你是 LoomSci 的严谨研究编辑。只使用给定的来源与 claim；"
-    "不得凭记忆补充事实、数字、引文或 URL。"
-    "每个事实性结论后必须保留来源编号，如 [S001]。"
-    "区分事实、推断与判断；证据不足时明确写“证据不足”。"
-    "默认使用简体中文写作，术语首次出现可保留英文。\n"
-    "写作遵循《LoomSci Report · Perspective 写作标准》："
-    "开篇给问题与阅读路线图；一段一个认知任务；每个概念按直觉层/技术层/意义层展开；"
-    "类比只用于降低门槛；每节标题是问题或判断；结论回答开篇。"
-)
+SYSTEM = style.report_system()
 
 
 def _clean(value: str, limit: int = 600) -> str:
