@@ -1,0 +1,9 @@
+{
+  "name": "LoomSci Report",
+  "slug": "report",
+  "version": "0.1.0",
+  "package": "loomsci_report",
+  "entry": "server",
+  "health": "/health",
+  "permissions": ["items.read", "items.write"]
+}
