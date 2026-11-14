@@ -52,7 +52,7 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
         update(job_id, status="done", stage="done", item_id=result["item_id"],
                papers=result["papers"], workspace=result["workspace"],
                workspace_summary=result["workspace_summary"], queries=result["queries"],
-               finished_at=time.time())
+               exports=result.get("exports"), blobs=result.get("blobs"), finished_at=time.time())
     except Exception as exc:  # noqa: BLE001 - job boundary
         update(job_id, status="failed", stage="failed", error=str(exc), finished_at=time.time())
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, llm, openalex, workspace
+from . import arxiv, export, llm, openalex, workspace
 
 SYSTEM = (
     "你是 LoomSci 的严谨研究编辑。只使用给定的来源与 claim；"
@@ -291,6 +291,15 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         tags.append("verified")
     client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
     item = client.create_item(app="report", type="report.report", title="", body=body, tags=tags)
+    export_dir = data_dir / "research" / ws["code"] / ws["version"] / "exports"
+    bundle = export.export_all(body, export_dir, plan["title"], slug=f"report-{ws['code']}")
+    blobs = []
+    for fmt, ctype in (("md", "text/markdown"), ("pdf", "application/pdf"), ("epub", "application/epub+zip")):
+        path = Path(bundle[fmt]["path"])
+        blob = client.upload_blob(filename=path.name, content_type=ctype, data=path.read_bytes(), item_id=item["id"])
+        blobs.append({"filename": path.name, "id": blob["id"], "bytes": path.stat().st_size})
+    client.update_item(item["id"], metadata={"exports": blobs})
     summary = workspace.summary(data_dir / "research", ws["code"], ws["version"])
     return {"item_id": item["id"], "papers": len(papers), "workspace": ws,
-            "workspace_summary": summary, "check": check, "queries": queries}
+            "workspace_summary": summary, "check": check, "queries": queries,
+            "exports": bundle, "blobs": blobs}
