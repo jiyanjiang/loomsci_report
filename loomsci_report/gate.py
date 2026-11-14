@@ -49,6 +49,18 @@ def evaluate(answer: str, sources: list[dict], *, query_terms: list[str] | None 
         reasons.append(f"答案引用来源不足({len(cited)})")
     if abstain:
         reasons.append("答案显式声明来源不足/未核验")
+    topical = None
+    terms = [str(t).lower() for t in (query_terms or []) if t and len(str(t)) >= 2]
+    if terms:
+        used = [s for s in srcs if str(s.get("id") or "").upper() in cited_ids
+                or str(s.get("url") or "") in cited_urls]
+        topical = 0
+        for source in used:
+            blob = f"{source.get('title') or ''} {source.get('abstract') or ''} {source.get('text') or ''}".lower()
+            if any(term in blob for term in terms):
+                topical += 1
+        if used and topical == 0:
+            reasons.append(f"被引用来源({len(used)})与检索词无任何交集（疑似跑题）")
     return {
         "ok": not reasons,
         "status": "verified" if not reasons else "unverified",
@@ -58,5 +70,6 @@ def evaluate(answer: str, sources: list[dict], *, query_terms: list[str] | None 
         "strong_count": len(strong),
         "cited_count": len(cited),
         "cited": sorted(str(x) for x in cited)[:8],
+        "topical_count": topical,
         "abstained": abstain,
     }
