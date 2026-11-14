@@ -137,12 +137,12 @@ $("#start").onclick = async () => {
   const question = $("#question").value.trim();
   if (!question) return;
   $("#status").textContent = "starting";
-  const response = await fetch("/api/jobs", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question})});
+  const response = await fetch("api/jobs", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question})});
   const data = await response.json();
   if (!response.ok) { $("#status").textContent = data.error || "failed"; return; }
   const id = data.job.id;
   const timer = setInterval(async () => {
-    const r = await fetch("/api/jobs/" + id);
+    const r = await fetch("api/jobs/" + id);
     const d = await r.json();
     const j = d.job;
     if (!j) return;
