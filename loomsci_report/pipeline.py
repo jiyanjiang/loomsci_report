@@ -181,7 +181,12 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
             break
     papers = papers[:100]
     if not papers:
-        raise RuntimeError("arXiv returned no records")
+        try:
+            papers = arxiv.search(query or question, max_results=100)
+        except Exception:
+            papers = []
+    if not papers:
+        raise RuntimeError("arXiv returned no records after fallback")
 
     ws = workspace.new(question, data_dir / "research", title=question[:80])
     refs = []
