@@ -33,7 +33,17 @@ DEEPSEEK_KEY_FILE
 
 Keys are never logged.
 
-Model default is `deepseek-flash`; override with `DEEPSEEK_MODEL`.
+Primary model is `deepseek-v4-flash`; if it fails or returns empty, the client
+falls back to Alibaba DashScope `qwen-plus`.
+
+```text
+DEEPSEEK_MODEL=deepseek-v4-flash
+ALI_MODEL=qwen-plus
+DASHSCOPE_API_KEY / ALIBABA_API_KEY / QWEN_API_KEY
+```
+
+Ali keys are also read from `~/.loomsci/config.yaml` and
+`~/.taa/config.toml` (`llm.alibaba_api_key`).
 
 ## Retrieval
 

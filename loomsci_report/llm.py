@@ -1,7 +1,9 @@
-"""DeepSeek adapter for the Report app.
+"""LLM adapter with provider fallback.
 
-Key resolution order: environment, LOOMSCI_HOME/config.yaml, legacy TAA
-config.toml, then an explicit local key file. Keys are never logged.
+Order: DeepSeek v4 Flash -> Alibaba DashScope (qwen-plus).
+
+Keys are resolved from environment, LOOMSCI config, or legacy TAA config.
+Keys are never logged.
 """
 
 from __future__ import annotations
@@ -17,15 +19,26 @@ from typing import Any
 
 try:
     import yaml
-except Exception:  # pragma: no cover - optional
+except Exception:  # pragma: no cover
     yaml = None
 
-CHAT_URL = os.environ.get("DEEPSEEK_CHAT_URL", "https://api.deepseek.com/chat/completions")
-MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
+DEEPSEEK_URL = os.environ.get("DEEPSEEK_CHAT_URL", "https://api.deepseek.com/chat/completions")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+ALI_URL = os.environ.get(
+    "DASHSCOPE_CHAT_URL",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+)
+ALI_MODEL = os.environ.get("ALI_MODEL", "qwen-plus")
+MODEL = DEEPSEEK_MODEL  # backwards-compatible export
 
 
 class LlmError(RuntimeError):
     pass
+
+
+def _config_paths(home: Path | None = None) -> tuple[Path, Path]:
+    base = home or Path(os.environ.get("LOOMSCI_HOME", str(Path.home() / ".loomsci")))
+    return base / "config.yaml", Path.home() / ".taa" / "config.toml"
 
 
 def deepseek_key(home: Path | None = None) -> str:
@@ -33,8 +46,7 @@ def deepseek_key(home: Path | None = None) -> str:
         value = os.environ.get(name)
         if value:
             return value.strip()
-    base = home or Path(os.environ.get("LOOMSCI_HOME", str(Path.home() / ".loomsci")))
-    config = base / "config.yaml"
+    config, legacy = _config_paths(home)
     if yaml and config.is_file():
         try:
             data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
@@ -44,7 +56,6 @@ def deepseek_key(home: Path | None = None) -> str:
                 return str(value).strip()
         except Exception:
             pass
-    legacy = Path.home() / ".taa" / "config.toml"
     if legacy.is_file():
         try:
             data = tomllib.loads(legacy.read_text(encoding="utf-8"))
@@ -59,11 +70,39 @@ def deepseek_key(home: Path | None = None) -> str:
     return ""
 
 
-def _post(payload: dict[str, Any], key: str, timeout: int = 180) -> dict:
+def ali_key(home: Path | None = None) -> str:
+    for name in ("DASHSCOPE_API_KEY", "ALIBABA_API_KEY", "QWEN_API_KEY"):
+        value = os.environ.get(name)
+        if value:
+            return value.strip()
+    config, legacy = _config_paths(home)
+    if yaml and config.is_file():
+        try:
+            data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+            llm = data.get("llm") or {}
+            value = (llm.get("providers") or {}).get("ali", {}).get("api_key")
+            value = value or llm.get("alibaba_api_key") or llm.get("dashscope_api_key")
+            if value:
+                return str(value).strip()
+        except Exception:
+            pass
+    if legacy.is_file():
+        try:
+            data = tomllib.loads(legacy.read_text(encoding="utf-8"))
+            llm = data.get("llm") or {}
+            value = llm.get("alibaba_api_key") or llm.get("dashscope_api_key")
+            if value:
+                return str(value).strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _post(url: str, payload: dict[str, Any], key: str, *, provider: str, timeout: int) -> dict:
     if not key:
-        raise LlmError("DeepSeek key missing")
+        raise LlmError(f"{provider} key missing")
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(CHAT_URL, data=body, method="POST")
+    request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("Content-Type", "application/json")
     request.add_header("Authorization", f"Bearer {key}")
     last_error = None
@@ -73,17 +112,17 @@ def _post(payload: dict[str, Any], key: str, timeout: int = 180) -> dict:
                 return json.loads(response.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:300]
-            raise LlmError(f"DeepSeek HTTP {exc.code}: {detail}") from None
+            raise LlmError(f"{provider} HTTP {exc.code}: {detail}") from None
         except (OSError, ValueError) as exc:
             last_error = exc
             if attempt == 0:
                 time.sleep(1.0)
-    raise LlmError(f"DeepSeek request failed: {type(last_error).__name__}") from None
+    raise LlmError(f"{provider} request failed: {type(last_error).__name__}") from None
 
 
-def chat(system: str, user: str, key: str, *, model: str = MODEL,
-         temperature: float = 0.3, max_tokens: int = 4000, timeout: int = 180) -> str:
-    data = _post({
+def _call(system: str, user: str, key: str, *, url: str, provider: str, model: str,
+          temperature: float, max_tokens: int, timeout: int) -> str:
+    data = _post(url, {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
@@ -92,26 +131,43 @@ def chat(system: str, user: str, key: str, *, model: str = MODEL,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": False,
-    }, key, timeout=timeout)
+    }, key, provider=provider, timeout=timeout)
     try:
         text = str(data["choices"][0]["message"]["content"]).strip()
     except (KeyError, IndexError, TypeError):
         text = ""
-    if not text and model != "deepseek-chat":
-        # deepseek-flash occasionally returns an empty content field for
-        # long structured prompts; retry once with the stable chat model.
-        return chat(system, user, key, model="deepseek-chat", temperature=temperature,
-                    max_tokens=max_tokens, timeout=timeout)
     if not text:
-        raise LlmError("DeepSeek returned empty content")
+        raise LlmError(f"{provider} returned empty content")
     return text
 
 
-def json_chat(system: str, user: str, key: str, *, model: str = MODEL,
+def chat(system: str, user: str, key: str = "", *, model: str = DEEPSEEK_MODEL,
+         temperature: float = 0.3, max_tokens: int = 4000, timeout: int = 180) -> str:
+    """DeepSeek first; on failure/empty switch to Alibaba DashScope."""
+    errors = []
+    if key and os.environ.get("LLM_PROVIDER", "").lower() not in {"ali", "alibaba", "dashscope"}:
+        try:
+            return _call(system, user, key, url=DEEPSEEK_URL, provider="deepseek",
+                         model=model, temperature=temperature, max_tokens=max_tokens, timeout=timeout)
+        except LlmError as exc:
+            errors.append(str(exc))
+    ak = ali_key()
+    if ak:
+        try:
+            return _call(system, user, ak, url=ALI_URL, provider="ali",
+                         model=ALI_MODEL, temperature=temperature,
+                         max_tokens=max_tokens, timeout=timeout)
+        except LlmError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise LlmError("all providers failed: " + " | ".join(errors))
+    raise LlmError("DeepSeek/Ali key missing")
+
+
+def json_chat(system: str, user: str, key: str = "", *, model: str = DEEPSEEK_MODEL,
               temperature: float = 0.1, max_tokens: int = 4000, timeout: int = 180) -> Any:
     text = chat(system, user, key, model=model, temperature=temperature,
-                max_tokens=max_tokens, timeout=timeout)
-    text = text.strip()
+                max_tokens=max_tokens, timeout=timeout).strip()
     if text.startswith("```"):
         lines = text.splitlines()
         if lines and lines[0].startswith("```"):
@@ -119,19 +175,11 @@ def json_chat(system: str, user: str, key: str, *, model: str = MODEL,
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         text = "\n".join(lines).strip()
-    try:
-        return json.loads(text)
-    except ValueError:
-        start, end = text.find("["), text.rfind("]")
+    for open_char, close_char in (("{", "}"), ("[", "]")):
+        start, end = text.find(open_char), text.rfind(close_char)
         if start >= 0 and end > start:
             try:
                 return json.loads(text[start:end + 1])
             except ValueError:
                 pass
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end + 1])
-            except ValueError:
-                pass
-        raise LlmError("DeepSeek returned non-JSON content") from None
+    raise LlmError("LLM returned non-JSON content") from None
