@@ -18,7 +18,7 @@ except Exception:  # pragma: no cover
 from . import workspace
 
 ALLOWED = {"cc-by", "cc-by-3.0", "cc-by-4.0", "cc-by-sa", "cc0", "public-domain", "publicdomain"}
-CAPTION_RE = re.compile(r"^\s*(Fig(?:ure)?\.?|Table)\s*([0-9]+[A-Za-z]?)", re.I)
+CAPTION_RE = re.compile(r"^\s*(Fig(?:ure)?\.?|Table)\s*([0-9]+[A-Za-z]?)\s*[|:.]", re.I)
 
 
 def allowed_license(value: str) -> bool:
@@ -52,7 +52,16 @@ def extract_captions(data: bytes, max_items: int = 4) -> list[dict]:
                 continue
             seen.add(label.lower())
             caption = text[:1200]
-            out.append({"kind": kind, "label": label, "caption": caption, "page": page_no})
+            item = {"kind": kind, "label": label, "caption": caption, "page": page_no}
+            if kind == "table":
+                try:
+                    found_tables = page.find_tables().tables
+                    if found_tables:
+                        rows = found_tables[0].extract()
+                        item["rows"] = [[str(cell or "")[:120] for cell in row] for row in rows[:8]]
+                except Exception:
+                    pass
+            out.append(item)
             if len(out) >= max_items:
                 return out
     return out
@@ -78,7 +87,8 @@ def collect(root: Path, code: str, version: str, sources: list[dict], max_source
                 quote=item["caption"],
                 kind=item["kind"],
                 metadata={"label": item["label"], "page": item["page"],
-                          "license": source.get("license"), "pdf_url": source["pdf_url"]},
+                          "license": source.get("license"), "pdf_url": source["pdf_url"],
+                          "rows": item.get("rows", [])},
             )
             facts.append(fact)
         if len({f["source"] for f in facts}) >= max_sources:
