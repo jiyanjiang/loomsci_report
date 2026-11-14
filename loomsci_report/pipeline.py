@@ -119,7 +119,7 @@ def _synthesize(question: str, claims: list[dict], refs: list[dict], key: str) -
         "你是研究主编。基于 claim 设计一篇中文 Perspective。输出 JSON："
         '{"title":"...","thesis":"...","reader_model":"...","roadmap":["..."],'
         '"sections":[{"title":"...","question":"...","angle":"...","claim_ids":["S001"]}]}。'
-        "4-5 节；标题必须是问题或判断，不是名词短语；roadmap 2-4 句；"
+        "4-5 节；标题必须是问题或判断，不是名词短语；总标题 8-18 个汉字或 6-12 个英文词；roadmap 2-4 句；"
         "每节 6-12 条 claim；论点必须有张力且可证伪；不得引入新事实。",
         f"问题：{question}\n\n可用 claim：\n{compact}",
         key, temperature=0.2, max_tokens=2200,
@@ -135,10 +135,13 @@ def _synthesize(question: str, claims: list[dict], refs: list[dict], key: str) -
     if not sections:
         ordered = [c["source_id"] for c in sorted(claims, key=lambda x: -int(x.get("relevance") or 0))]
         sections = [{"title": f"证据视角 {i + 1}", "angle": "按证据归纳", "claim_ids": ordered[i::4][:12]} for i in range(4)]
+    raw_roadmap = data.get("roadmap") or []
+    if isinstance(raw_roadmap, str):
+        raw_roadmap = [x.strip() for x in re.split(r"(?<=[。；;])", raw_roadmap) if x.strip()]
     return {"title": _clean(data.get("title") or question, 120),
             "thesis": _clean(data.get("thesis"), 700),
             "reader_model": _clean(data.get("reader_model"), 400),
-            "roadmap": [_clean(x, 300) for x in (data.get("roadmap") or []) if str(x).strip()][:4],
+            "roadmap": [_clean(x, 300) for x in raw_roadmap if str(x).strip()][:4],
             "sections": sections[:5]}
 
 
