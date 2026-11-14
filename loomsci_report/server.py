@@ -15,8 +15,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
-from .arxiv import search as arxiv_search
-from .openalex import search as openalex_search
 from . import workspace
 
 DATA = Path(os.environ["LOOMSCI_APP_DATA_DIR"])
@@ -48,62 +46,13 @@ def update(job_id: str, **fields) -> None:
 
 def run_job(job_id: str, question: str, query: str = "") -> None:
     try:
-        update(job_id, status="running", stage="searching", started_at=time.time())
-        papers = arxiv_search(query or question, max_results=100)
-        ws = workspace.new(question, DATA / "research", title=question[:80])
-        arxiv_sources = []
-        for paper in papers:
-            source = workspace.add_source(DATA / "research", ws["code"], ws["version"], {
-                "url": paper.url,
-                "domain": "arxiv.org",
-                "title": paper.title,
-                "authors": paper.authors,
-                "year": paper.published[:4],
-                "arxiv": paper.id,
-                "license": "arXiv",
-            })
-            arxiv_sources.append(source)
-            sentence = (paper.abstract.split(". ")[0] if paper.abstract else paper.title).strip()
-            workspace.add_fact(DATA / "research", ws["code"], ws["version"], claim=sentence, url=paper.url, quote=paper.abstract[:500])
-        try:
-            for work in openalex_search(query or question, max_results=10):
-                url = ("https://doi.org/" + work.doi) if work.doi else work.url
-                if url:
-                    workspace.add_source(DATA / "research", ws["code"], ws["version"], {
-                        "url": url, "title": work.title, "authors": work.authors,
-                        "year": work.year, "openalex": work.id, "license": "unknown",
-                    })
-        except Exception:
-            pass
-        update(job_id, stage="writing", found=len(papers), workspace=ws)
-        title = question or "Research report"
-        lines = ["# " + title, "", "## Abstract", "", f"This is an evidence-mapped draft based on {len(papers)} arXiv records retrieved for the question. It is not yet a validated Perspective synthesis.", "", "## Question", "", question, ""]
-        lines += ["## Evidence map", "", "| Source | arXiv | Year | First author | Title |", "|---|---|---|---|---|"]
-        for source, paper in zip(arxiv_sources, papers):
-            author = paper.authors[0] if paper.authors else "unknown"
-            lines.append(f"| [{source['id']}] | {paper.id} | {paper.published} | {author} | {paper.title} |")
-        lines += ["", "## Themes", ""]
-        if papers:
-            lines.append("The retrieved set is concentrated in topological superconductivity, Majorana modes, and material/platform studies. The table is the evidence inventory; it is not yet a synthesis of mechanisms.")
-        else:
-            lines.append("No arXiv records were returned for this query.")
-        lines += ["", "## Open questions", "", "- Which material platforms give reproducible Majorana signatures?", "- What experiments distinguish topological modes from trivial bound states?", "- What would falsify the leading interpretations?", ""]
-        lines += ["## References", ""]
-        for p in papers:
-            lines.append(f"- [{p.id}]({p.url}) {p.title} ({p.published})")
-        draft = "\n".join(lines) + "\n"
-        workspace.write_draft(DATA / "research", ws["code"], ws["version"], draft)
-        check = workspace.check(DATA / "research", ws["code"], ws["version"], [question])
-        draft += "\n## Evidence gate\n\n" + json.dumps(check, ensure_ascii=False, indent=2) + "\n"
-        body = draft
-        client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
-        tags = ["report", "physics", "arxiv", "openalex"]
-        if check.get("ok"):
-            tags.append("verified")
-        item = client.create_item(app="report", type="report.report", title="", body=body, tags=tags)
-        summary = workspace.summary(DATA / "research", ws["code"], ws["version"])
-        update(job_id, status="done", stage="done", item_id=item["id"], papers=len(papers),
-               workspace=ws, workspace_summary=summary, finished_at=time.time())
+        update(job_id, status="running", stage="planning", started_at=time.time())
+        from . import pipeline
+        result = pipeline.generate(job_id, question, query, DATA, lambda **fields: update(job_id, **fields))
+        update(job_id, status="done", stage="done", item_id=result["item_id"],
+               papers=result["papers"], workspace=result["workspace"],
+               workspace_summary=result["workspace_summary"], queries=result["queries"],
+               finished_at=time.time())
     except Exception as exc:  # noqa: BLE001 - job boundary
         update(job_id, status="failed", stage="failed", error=str(exc), finished_at=time.time())
 
