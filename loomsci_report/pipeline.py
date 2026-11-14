@@ -169,7 +169,7 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
     seen = set()
     for q in queries:
         try:
-            found = arxiv.search(q, max_results=30)
+            found = arxiv.search(q, max_results=40)
         except Exception:
             found = []
         for paper in found:
@@ -191,21 +191,36 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
             "arxiv": paper.id, "license": "arXiv", "abstract": paper.abstract,
         })
         refs.append(_source_ref({**source, "abstract": paper.abstract}))
+    extra_sources = []
     try:
         for work in openalex.search(query or question, max_results=10):
             url = ("https://doi.org/" + work.doi) if work.doi else work.url
             if url:
-                workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
+                source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
                     "url": url, "title": work.title, "authors": work.authors,
                     "year": work.year, "openalex": work.id, "license": "unknown",
                 })
+                extra_sources.append(source)
     except Exception:
         pass
 
     update(stage="extracting", progress=0.30, found=len(papers), workspace=ws)
     claims = _extract_all(question, refs, key)
+    # Numeric floor: every source should carry one traceable record.
+    for source in extra_sources:
+        if len(claims) >= 100:
+            break
+        if any(c["source_id"] == source["id"] for c in claims):
+            continue
+        claims.append({
+            "source_id": source["id"], "claim": _clean(source.get("title"), 400),
+            "evidence": "OpenAlex metadata only", "qualifier": "仅题录，未读全文",
+            "relevance": 2,
+        })
     for claim in claims:
         ref = next((r for r in refs if r["id"] == claim["source_id"]), None)
+        if ref is None:
+            ref = next((_source_ref(x) for x in extra_sources if x["id"] == claim["source_id"]), None)
         if ref:
             workspace.add_fact(data_dir / "research", ws["code"], ws["version"],
                                claim=claim["claim"], url=ref["url"],
