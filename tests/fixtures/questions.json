@@ -1,0 +1,216 @@
+{
+  "format": "loomsci-report-questions/1",
+  "questions": [
+    {
+      "id": "acad-001",
+      "category": "academic",
+      "question": "我是博士生，想做量子纠错算法研究，请调研未来 5 年可做出高水平成果的方向，并撰写报告。",
+      "expected_sources": [
+        "arxiv",
+        "crossref",
+        "openalex"
+      ],
+      "notes": "6010 既有题材；需要理论与实验证据分层。"
+    },
+    {
+      "id": "acad-002",
+      "category": "academic",
+      "question": "请评估中性原子量子计算整机研发未来 5 年的一流研究方向，偏工程实现。",
+      "expected_sources": [
+        "arxiv",
+        "crossref"
+      ],
+      "notes": "要求区分工程瓶颈与科学问题。"
+    },
+    {
+      "id": "acad-003",
+      "category": "academic",
+      "question": "请调研基于多 agent 的自动科研流程在计算宇宙学方法发现与 benchmark 设计中的应用，给出 3 年方向。",
+      "expected_sources": [
+        "arxiv",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "跨 AI 与宇宙学；检查概念转译。"
+    },
+    {
+      "id": "acad-004",
+      "category": "academic",
+      "question": "请调研 AI for Science 时代科技传播转型，给出 5 年内优秀选题方向。",
+      "expected_sources": [
+        "openalex",
+        "crossref",
+        "web"
+      ],
+      "notes": "非纯 arXiv 题材，测试来源多样性。"
+    },
+    {
+      "id": "acad-005",
+      "category": "academic",
+      "question": "请梳理铜氧化物与铁基超导体配对机制的关键实验证据与理论解释，给出 4 年研究方向。",
+      "expected_sources": [
+        "arxiv",
+        "crossref",
+        "openalex"
+      ],
+      "notes": "高争议领域，检查共识/争议分离。"
+    },
+    {
+      "id": "acad-006",
+      "category": "academic",
+      "question": "请调研病原基因组与人群免疫证据用于新发传染病早期预警的可重复信号，给出 5 年方向。",
+      "expected_sources": [
+        "pubmed",
+        "europepmc",
+        "crossref"
+      ],
+      "notes": "生物医学；检查临床/公卫措辞。"
+    },
+    {
+      "id": "acad-007",
+      "category": "academic",
+      "question": "请评估古典学与 AI 伦理交叉领域未来 5 年的一流研究方向，并撰写报告。",
+      "expected_sources": [
+        "crossref",
+        "openalex",
+        "web"
+      ],
+      "notes": "人文学科；来源不应只有 arXiv。"
+    },
+    {
+      "id": "acad-008",
+      "category": "academic",
+      "question": "请调研幼儿孤独症早期干预（约 2 岁）未来 5 年可做出一流实践成果的方向。",
+      "expected_sources": [
+        "pubmed",
+        "europepmc",
+        "crossref"
+      ],
+      "notes": "高风险医学题材；必须避免诊断建议。"
+    },
+    {
+      "id": "life-001",
+      "category": "life",
+      "question": "如何为一个 3 岁儿童选择幼儿园？请基于公开研究说明看哪些因素、哪些是营销话术。",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "生活决策；需要证据等级与不确定性。"
+    },
+    {
+      "id": "life-002",
+      "category": "life",
+      "question": "成年人改善睡眠质量，哪些干预有较好的公开证据？请区分强证据、弱证据和常见误区。",
+      "expected_sources": [
+        "pubmed",
+        "europepmc",
+        "web"
+      ],
+      "notes": "健康生活；不做个体医疗建议。"
+    },
+    {
+      "id": "life-003",
+      "category": "life",
+      "question": "计划第一次去日本自由行 7 天，如何根据公开信息选择城市、交通和住宿区域？",
+      "expected_sources": [
+        "web"
+      ],
+      "notes": "生活规划；来源时效性和官方信息优先。"
+    },
+    {
+      "id": "life-004",
+      "category": "life",
+      "question": "家用净水器应该看哪些参数？不同技术路线的真实取舍是什么？",
+      "expected_sources": [
+        "web",
+        "openalex"
+      ],
+      "notes": "消费决策；避免品牌软文。"
+    },
+    {
+      "id": "life-005",
+      "category": "life",
+      "question": "如何为家庭制定应急储备？请给出基于公开建议的现金、食物、药品和文件清单。",
+      "expected_sources": [
+        "web"
+      ],
+      "notes": "通用生活；官方指南优先。"
+    },
+    {
+      "id": "biz-001",
+      "category": "business",
+      "question": "一个小型 SaaS 公司应该选择按席位定价还是按使用量定价？请给出决策框架和证据。",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "商业策略；需要明确假设。"
+    },
+    {
+      "id": "biz-002",
+      "category": "business",
+      "question": "硬件创业公司进入欧盟市场前，最重要的合规、供应链和渠道风险是什么？",
+      "expected_sources": [
+        "web",
+        "crossref"
+      ],
+      "notes": "商业/合规；官方来源优先。"
+    },
+    {
+      "id": "biz-003",
+      "category": "business",
+      "question": "请评估 2026 年企业采用 AI agent 工具的主要障碍，并给出采购决策清单。",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "市场/采购；区分厂商声明与独立证据。"
+    },
+    {
+      "id": "biz-004",
+      "category": "business",
+      "question": "一家本地服务企业是否应该投入短视频获客？请给出可验证的决策框架。",
+      "expected_sources": [
+        "web"
+      ],
+      "notes": "小企业；避免成功学。"
+    },
+    {
+      "id": "biz-005",
+      "category": "business",
+      "question": "请分析开源软件商业化中 support、hosted service 和 open-core 三种模式的取舍。",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "商业模式；需要案例与反例。"
+    },
+    {
+      "id": "general-001",
+      "category": "general",
+      "question": "请解释一个复杂公共政策问题：城市拥堵收费是否有效？哪些证据支持、哪些证据反对？",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "通用政策；检查多立场来源。"
+    },
+    {
+      "id": "general-002",
+      "category": "general",
+      "question": "请评估“远程办公提高生产率”这一说法，给出支持、反对和条件性证据。",
+      "expected_sources": [
+        "web",
+        "openalex",
+        "crossref"
+      ],
+      "notes": "通用社会议题；避免单一结论。"
+    }
+  ]
+}
