@@ -308,6 +308,7 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         draft = _critic(draft, allowed, key)
     except Exception:
         pass
+    workspace.write_draft(data_dir / "research", ws["code"], ws["version"], draft)
     check = workspace.check(data_dir / "research", ws["code"], ws["version"], [question])
     all_sources = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     body = report_format.finalize(draft, all_sources, check)
@@ -318,7 +319,7 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         tags.append("verified")
     client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
     item = client.create_item(app="report", type="report.report", title="", body=body, tags=tags)
-    export_dir = data_dir / "research" / ws["code"] / ws["version"] / "exports"
+    export_dir = data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "exports"
     bundle = export.export_all(body, export_dir, plan["title"], slug=f"report-{ws['code']}")
     blobs = []
     for fmt, ctype in (("md", "text/markdown"), ("pdf", "application/pdf"), ("epub", "application/epub+zip")):
