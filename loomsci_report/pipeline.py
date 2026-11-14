@@ -309,7 +309,7 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
     except Exception:
         pass
     check = workspace.check(data_dir / "research", ws["code"], ws["version"], [question])
-    all_sources = [json.loads(line) for line in (data_dir / "research" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    all_sources = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     body = report_format.finalize(draft, all_sources, check)
     workspace.write_draft(data_dir / "research", ws["code"], ws["version"], body)
 
