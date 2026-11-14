@@ -47,7 +47,7 @@ def update(job_id: str, **fields) -> None:
 def run_job(job_id: str, question: str, query: str = "") -> None:
     try:
         update(job_id, status="running", stage="searching", started_at=time.time())
-        papers = arxiv_search(query or question, max_results=12)
+        papers = arxiv_search(query or question, max_results=100)
         update(job_id, stage="writing", found=len(papers))
         title = question or "Research report"
         lines = ["# " + title, "", "## Abstract", "", f"This is an evidence-mapped draft based on {len(papers)} arXiv records retrieved for the question. It is not yet a validated Perspective synthesis.", "", "## Question", "", question, ""]

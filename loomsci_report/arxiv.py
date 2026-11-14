@@ -44,7 +44,7 @@ def _query(term: str, max_results: int) -> list[Paper]:
     return papers
 
 
-def search(query: str, max_results: int = 12) -> list[Paper]:
+def search(query: str, max_results: int = 100) -> list[Paper]:
     query = " ".join(str(query or "").split())
     if not query:
         return []
