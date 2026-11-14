@@ -33,7 +33,7 @@ DEEPSEEK_KEY_FILE
 
 Keys are never logged.
 
-Model default is `deepseek-chat`; override with `DEEPSEEK_MODEL`.
+Model default is `deepseek-flash`; override with `DEEPSEEK_MODEL`.
 
 ## Retrieval
 

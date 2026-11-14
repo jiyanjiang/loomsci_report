@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover - optional
     yaml = None
 
 CHAT_URL = os.environ.get("DEEPSEEK_CHAT_URL", "https://api.deepseek.com/chat/completions")
-MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
 
 
 class LlmError(RuntimeError):

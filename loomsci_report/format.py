@@ -36,15 +36,65 @@ def _gate_table(check: dict) -> str:
 """
 
 
-def finalize(md: str, sources: list[dict], check: dict) -> str:
-    """Remove machine JSON and append a human-readable evidence note."""
+def _rebuild_table(body: str, facts: list[dict] | None) -> str:
+    if not facts:
+        return body
+    cited = {x.upper() for x in re.findall(r"\[(S\d{3})\]", body)}
+    by_source = {}
+    for fact in facts:
+        sid = str(fact.get("source") or "").upper()
+        if sid and sid not in by_source and fact.get("kind", "claim") == "claim":
+            by_source[sid] = fact
+    rows = []
+    for sid in sorted(cited):
+        fact = by_source.get(sid)
+        if not fact:
+            continue
+        claim = str(fact.get("claim") or "").replace("|", "/")[:220]
+        qualifier = str(fact.get("qualifier") or fact.get("metadata", {}).get("qualifier") or "").replace("|", "/")[:120]
+        rows.append(f"| [{sid}] | {claim} | {qualifier} |")
+    if not rows:
+        return body
+    start = body.find("## 证据表")
+    if start < 0:
+        return body
+    end = body.find("\n## ", start + 1)
+    table = "## 证据表\n\n| 来源 | 判断 | 限定 |\n|---|---|---|\n" + "\n".join(rows) + "\n"
+    return body[:start] + table + (body[end:] if end >= 0 else "")
+
+
+def _rebuild_references(body: str, sources: list[dict]) -> str:
+    cited = {x.upper() for x in re.findall(r"\[(S\d{3})\]", body)}
+    by_id = {str(s.get("id") or "").upper(): s for s in sources if s.get("id")}
+    refs = []
+    for sid in sorted(cited):
+        src = by_id.get(sid)
+        if not src:
+            continue
+        title = normalize_math(str(src.get("title") or "")).replace("|", "/")
+        refs.append(f"- [{sid}] {title} — {src.get('url') or ''}")
+    if not refs:
+        return body
+    if "## 参考来源" in body:
+        head, tail = body.split("## 参考来源", 1)
+        nxt = tail.find("\n## ")
+        body = head + "## 参考来源\n\n" + "\n".join(refs) + ("\n" + tail[nxt:] if nxt >= 0 else "\n")
+    else:
+        body = body.rstrip() + "\n\n## 参考来源\n\n" + "\n".join(refs) + "\n"
+    return body
+
+
+def finalize(md: str, sources: list[dict], check: dict, facts: list[dict] | None = None) -> str:
+    """Remove machine JSON, rebuild citation table/references, add evidence note."""
     body = md.split("## 证据门禁", 1)[0].rstrip()
-    body = normalize_math(body)
+    body = normalize_math(body).replace("`[Sxxx]`", "`S001`")
+    body = _rebuild_table(body, facts)
+    body = _rebuild_references(body, sources)
     # add citation semantics once
     if "## 引用说明" not in body:
         body = body.replace("## 证据表", """## 引用说明
 
-正文中的 `[Sxxx]` 是**稳定证据编号**，指向下方证据表与参考来源。导出时不重编号，便于逐条复核；编号本身不代表引用次数或重要性。
+正文中的稳定证据编号（如 `S001`）指向下方证据表与参考来源。导出时不重编号，便于逐条复核；编号本身不代表引用次数或重要性。
 
 ## 证据表""", 1)
     # rebuild reference URLs from the source registry, only cited sources
