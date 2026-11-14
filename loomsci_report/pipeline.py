@@ -13,7 +13,8 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, export, llm, openalex, workspace
+from . import arxiv, export, llm, openalex, review, workspace
+from . import format as report_format
 
 SYSTEM = (
     "你是 LoomSci 的严谨研究编辑。只使用给定的来源与 claim；"
@@ -206,6 +207,31 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
 
     update(stage="extracting", progress=0.30, found=len(papers), workspace=ws)
     claims = _extract_all(question, refs, key)
+    try:
+        assessment = review.assess_sufficiency(question, claims, key)
+    except Exception:
+        assessment = {"sufficient": True, "reasons": [], "extra_queries": []}
+    extra_queries = [str(q) for q in (assessment.get("extra_queries") or []) if str(q).strip()][:2]
+    for extra_query in extra_queries:
+        try:
+            found = arxiv.search(extra_query, max_results=20)
+        except Exception:
+            found = []
+        new_refs = []
+        for paper in found:
+            source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
+                "url": paper.url, "domain": "arxiv.org", "title": paper.title,
+                "authors": paper.authors, "year": paper.published[:4],
+                "arxiv": paper.id, "license": "arXiv", "abstract": paper.abstract,
+            })
+            if source["id"] not in {r["id"] for r in refs}:
+                refs.append(_source_ref({**source, "abstract": paper.abstract}))
+                papers.append(paper)
+                new_refs.append(refs[-1])
+        if new_refs:
+            new_claims = _extract_all(question, new_refs, key)
+            have = {c["source_id"] for c in claims}
+            claims.extend(c for c in new_claims if c["source_id"] not in have)
     # Numeric floor: every source should carry one traceable record.
     for source in extra_sources:
         if len(claims) >= 100:
@@ -282,9 +308,10 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         draft = _critic(draft, allowed, key)
     except Exception:
         pass
-    workspace.write_draft(data_dir / "research", ws["code"], ws["version"], draft)
     check = workspace.check(data_dir / "research", ws["code"], ws["version"], [question])
-    body = draft + "\n\n## 证据门禁\n\n```json\n" + json.dumps(check, ensure_ascii=False, indent=2) + "\n```\n"
+    all_sources = [json.loads(line) for line in (data_dir / "research" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    body = report_format.finalize(draft, all_sources, check)
+    workspace.write_draft(data_dir / "research", ws["code"], ws["version"], body)
 
     tags = ["report", "zh", "llm", "arxiv", "openalex"]
     if check.get("ok"):
@@ -302,4 +329,4 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
     summary = workspace.summary(data_dir / "research", ws["code"], ws["version"])
     return {"item_id": item["id"], "papers": len(papers), "workspace": ws,
             "workspace_summary": summary, "check": check, "queries": queries,
-            "exports": bundle, "blobs": blobs}
+            "exports": bundle, "blobs": blobs, "assessment": assessment}
