@@ -9,3 +9,7 @@ implementation step.
 ## Manifest
 
 `slug=report`, `package=loomsci_report`, `entry=server`, health `/health`.
+
+## Writing style
+
+See [docs/perspective-style.md](docs/perspective-style.md) and [prompts/perspective.md](prompts/perspective.md).
