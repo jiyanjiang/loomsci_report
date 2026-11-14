@@ -35,6 +35,17 @@ Keys are never logged.
 
 Model default is `deepseek-chat`; override with `DEEPSEEK_MODEL`.
 
+## Retrieval
+
+OpenAlex is the primary metadata layer. The arXiv API is optional because it is
+rate-limited aggressively:
+
+```bash
+LOOMSCI_USE_ARXIV=1   # opt-in enrichment; default is OpenAlex only
+```
+
+OpenAlex abstracts are reconstructed from `abstract_inverted_index`.
+
 ## Evidence
 
 Sources are online APIs only. The app does not read a local arXiv database.

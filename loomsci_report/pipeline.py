@@ -14,7 +14,8 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, export, llm, openalex, review, style, workspace
+from . import arxiv, export, gate, llm, openalex, review, style, workspace
+from .arxiv import Paper
 from . import format as report_format
 
 SYSTEM = style.report_system()
@@ -172,33 +173,49 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
     queries = _plan(question, query, key)
 
     update(stage="searching", progress=0.15)
+    # OpenAlex is the primary metadata layer: it is stable and not as
+    # aggressively rate-limited as the arXiv API. arXiv is an optional
+    # enrichment layer (LOOMSCI_USE_ARXIV=1), not a single point of failure.
     papers = []
     seen = set()
-    for q in queries:
-        try:
-            found = arxiv.search(q, max_results=40)
-        except Exception:
-            found = []
-        for paper in found:
-            if paper.id not in seen:
-                seen.add(paper.id)
-                papers.append(paper)
-        if len(papers) >= 100:
-            break
+
+    def add_paper(paper):
+        key = (paper.url or paper.title).lower()
+        if key not in seen:
+            seen.add(key)
+            papers.append(paper)
+
+    try:
+        works = openalex.search(query or question, max_results=100)
+    except Exception:
+        works = []
+    for work in works:
+        if work.title and work.url:
+            add_paper(Paper(id=work.id, title=work.title, abstract=work.abstract,
+                            authors=work.authors, published=str(work.year or ""),
+                            category="", url=work.url))
+
+    use_arxiv = os.environ.get("LOOMSCI_USE_ARXIV", "0") == "1"
+    if use_arxiv and len(papers) < 60:
+        for q in queries:
+            try:
+                found = arxiv.search(q, max_results=30)
+            except Exception:
+                found = []
+            for paper in found:
+                add_paper(paper)
+            if len(papers) >= 100:
+                break
+
     papers = papers[:100]
     if not papers:
-        try:
-            papers = arxiv.search(query or question, max_results=100)
-        except Exception:
-            papers = []
-    if not papers:
-        raise RuntimeError("arXiv returned no records after fallback")
+        raise RuntimeError("no records from OpenAlex or arXiv")
 
     ws = workspace.new(question, data_dir / "research", title=question[:80])
     refs = []
     for paper in papers:
         source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
-            "url": paper.url, "domain": "arxiv.org", "title": paper.title,
+            "url": paper.url, "domain": gate.host(paper.url), "title": paper.title,
             "authors": paper.authors, "year": paper.published[:4],
             "arxiv": paper.id, "license": "arXiv", "abstract": paper.abstract,
         })
@@ -224,14 +241,24 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         assessment = {"sufficient": True, "reasons": [], "extra_queries": []}
     extra_queries = [str(q) for q in (assessment.get("extra_queries") or []) if str(q).strip()][:2]
     for extra_query in extra_queries:
-        try:
-            found = arxiv.search(extra_query, max_results=20)
-        except Exception:
-            found = []
+        found = []
+        if os.environ.get("LOOMSCI_USE_ARXIV", "0") == "1":
+            try:
+                found = arxiv.search(extra_query, max_results=20)
+            except Exception:
+                found = []
+        else:
+            try:
+                found = [Paper(id=w.id, title=w.title, abstract=w.abstract,
+                               authors=w.authors, published=str(w.year or ""),
+                               category="", url=w.url)
+                         for w in openalex.search(extra_query, max_results=20)]
+            except Exception:
+                found = []
         new_refs = []
         for paper in found:
             source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
-                "url": paper.url, "domain": "arxiv.org", "title": paper.title,
+                "url": paper.url, "domain": gate.host(paper.url), "title": paper.title,
                 "authors": paper.authors, "year": paper.published[:4],
                 "arxiv": paper.id, "license": "arXiv", "abstract": paper.abstract,
             })
