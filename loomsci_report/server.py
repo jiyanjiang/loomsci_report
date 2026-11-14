@@ -49,7 +49,8 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
         update(job_id, status="running", stage="searching", started_at=time.time())
         papers = arxiv_search(query or question, max_results=12)
         update(job_id, stage="writing", found=len(papers))
-        lines = ["# Majorana zero modes and topological superconductivity", "", "## Question", "", question, ""]
+        title = question or "Research report"
+        lines = ["# " + title, "", "## Abstract", "", f"This is an evidence-mapped draft based on {len(papers)} arXiv records retrieved for the question. It is not yet a validated Perspective synthesis.", "", "## Question", "", question, ""]
         lines += ["## Evidence map", "", "| arXiv | Year | First author | Title |", "|---|---|---|---|"]
         for p in papers:
             author = p.authors[0] if p.authors else "unknown"

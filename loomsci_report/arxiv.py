@@ -22,9 +22,9 @@ class Paper:
     url: str
 
 
-def search(query: str, max_results: int = 12) -> list[Paper]:
-    term = urllib.parse.quote(f'all:"{query}"')
-    url = f"{API}?search_query={term}&start=0&max_results={max_results}&sortBy=relevance"
+def _query(term: str, max_results: int) -> list[Paper]:
+    encoded = urllib.parse.quote(term)
+    url = f"{API}?search_query={encoded}&start=0&max_results={max_results}&sortBy=relevance"
     request = urllib.request.Request(url, headers={"User-Agent": "loomsci-report/0.1"})
     with urllib.request.urlopen(request, timeout=30) as response:
         root = ET.fromstring(response.read())
@@ -42,3 +42,16 @@ def search(query: str, max_results: int = 12) -> list[Paper]:
             url=raw_id,
         ))
     return papers
+
+
+def search(query: str, max_results: int = 12) -> list[Paper]:
+    query = " ".join(str(query or "").split())
+    if not query:
+        return []
+    papers = _query(f'all:"{query}"', max_results)
+    if papers:
+        return papers
+    words = [word for word in query.replace("?", "").split() if len(word) > 3][:5]
+    if len(words) < 2:
+        return papers
+    return _query(" AND ".join(f'all:"{word}"' for word in words), max_results)
