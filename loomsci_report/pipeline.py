@@ -14,7 +14,7 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, export, figures, gate, llm, openalex, review, style, workspace
+from . import arxiv, editor, export, figures, gate, llm, openalex, review, style, workspace
 from .arxiv import Paper
 from . import format as report_format
 
@@ -365,17 +365,37 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         draft = _critic(draft, allowed, key)
     except Exception:
         pass
+    try:
+        draft, edit_trace = editor.edit_chunked(draft, key)
+        draft, split_count = editor.split_long_paragraphs(draft, max_sentences=4)
+        edit_trace.append({"status": "paragraph_split", "paragraphs_added": split_count})
+    except Exception:
+        edit_trace = []
     if figure_section and "## 图表事实" not in draft:
         draft = draft.rstrip() + "\n\n" + figure_section
     workspace.write_draft(data_dir / "research", ws["code"], ws["version"], draft)
     check = workspace.check(data_dir / "research", ws["code"], ws["version"], [question])
     all_sources = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    body = report_format.finalize(draft, all_sources, check)
+    all_facts = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "facts.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    body = report_format.finalize(draft, all_sources, check, all_facts)
     workspace.write_draft(data_dir / "research", ws["code"], ws["version"], body)
 
-    tags = ["report", "zh", "llm", "arxiv", "openalex"]
+    review_md = ""
+    reviews = []
+    try:
+        reviews = review.independent_review(body, all_facts, key)
+        review_md = review.to_markdown(reviews)
+        (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "REVIEW.md").write_text(review_md, encoding="utf-8")
+    except Exception:
+        reviews = []
+    tags = ["report", "zh", "llm", "openalex"]
     if check.get("ok"):
         tags.append("verified")
+    if reviews:
+        p0 = sum(1 for r in reviews for i in r.get("issues") or [] if i.get("severity") == "P0")
+        avg = sum(int(r.get("score") or 0) for r in reviews) / len(reviews)
+        tags.append("review_p0" if p0 else "reviewed")
+        tags.append("review_major" if avg < 80 else "review_pass")
     client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
     item = client.create_item(app="report", type="report.report", title="", body=body, tags=tags)
     export_dir = data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "exports"
@@ -385,8 +405,14 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         path = Path(bundle[fmt]["path"])
         blob = client.upload_blob(filename=path.name, content_type=ctype, data=path.read_bytes(), item_id=item["id"])
         blobs.append({"filename": path.name, "id": blob["id"], "bytes": path.stat().st_size})
+    if review_md:
+        review_path = data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "REVIEW.md"
+        rb = client.upload_blob(filename="REVIEW.md", content_type="text/markdown",
+                                data=review_path.read_bytes(), item_id=item["id"])
+        blobs.append({"filename": "REVIEW.md", "id": rb["id"], "bytes": review_path.stat().st_size})
     client.update_item(item["id"], metadata={"exports": blobs})
     summary = workspace.summary(data_dir / "research", ws["code"], ws["version"])
     return {"item_id": item["id"], "papers": len(papers), "workspace": ws,
             "workspace_summary": summary, "check": check, "queries": queries,
-            "exports": bundle, "blobs": blobs, "assessment": assessment}
+            "exports": bundle, "blobs": blobs, "assessment": assessment,
+            "reviews": reviews, "edit_trace": edit_trace}

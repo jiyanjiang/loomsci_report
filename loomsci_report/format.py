@@ -87,6 +87,7 @@ def _rebuild_references(body: str, sources: list[dict]) -> str:
 def finalize(md: str, sources: list[dict], check: dict, facts: list[dict] | None = None) -> str:
     """Remove machine JSON, rebuild citation table/references, add evidence note."""
     body = md.split("## 证据门禁", 1)[0].rstrip()
+    body = body.split("## 证据与核验", 1)[0].rstrip()
     body = normalize_math(body).replace("`[Sxxx]`", "`S001`")
     body = _rebuild_table(body, facts)
     body = _rebuild_references(body, sources)

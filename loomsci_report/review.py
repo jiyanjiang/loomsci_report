@@ -46,14 +46,14 @@ def independent_review(draft: str, claims: list[dict], key: str) -> list[dict]:
         for c in claims[:100]
     )
     reviews = []
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        jobs = [pool.submit(_one, role, mandate, draft, compact, key) for role, mandate in REVIEWERS]
-        for job in as_completed(jobs):
-            try:
-                reviews.append(job.result())
-            except Exception as exc:
-                reviews.append({"role": "reviewer", "verdict": "major_revision", "score": 0,
-                                "summary": f"review failed: {type(exc).__name__}", "issues": []})
+    # Sequential: deepseek-flash is cheap; concurrent review requests are more
+    # likely to hit transient provider/network failures.
+    for role, mandate in REVIEWERS:
+        try:
+            reviews.append(_one(role, mandate, draft, compact, key))
+        except Exception as exc:
+            reviews.append({"role": role, "verdict": "major_revision", "score": 0,
+                            "summary": f"review failed: {type(exc).__name__}", "issues": []})
     return reviews
 
 

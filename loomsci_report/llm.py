@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import tomllib
 import urllib.error
 import urllib.request
@@ -65,14 +66,19 @@ def _post(payload: dict[str, Any], key: str, timeout: int = 180) -> dict:
     request = urllib.request.Request(CHAT_URL, data=body, method="POST")
     request.add_header("Content-Type", "application/json")
     request.add_header("Authorization", f"Bearer {key}")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8", "replace"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:300]
-        raise LlmError(f"DeepSeek HTTP {exc.code}: {detail}") from None
-    except (OSError, ValueError) as exc:
-        raise LlmError(f"DeepSeek request failed: {type(exc).__name__}") from None
+    last_error = None
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8", "replace"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:300]
+            raise LlmError(f"DeepSeek HTTP {exc.code}: {detail}") from None
+        except (OSError, ValueError) as exc:
+            last_error = exc
+            if attempt == 0:
+                time.sleep(1.0)
+    raise LlmError(f"DeepSeek request failed: {type(last_error).__name__}") from None
 
 
 def chat(system: str, user: str, key: str, *, model: str = MODEL,
