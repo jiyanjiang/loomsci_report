@@ -94,9 +94,17 @@ def chat(system: str, user: str, key: str, *, model: str = MODEL,
         "stream": False,
     }, key, timeout=timeout)
     try:
-        return str(data["choices"][0]["message"]["content"]).strip()
+        text = str(data["choices"][0]["message"]["content"]).strip()
     except (KeyError, IndexError, TypeError):
-        raise LlmError("DeepSeek returned no content") from None
+        text = ""
+    if not text and model != "deepseek-chat":
+        # deepseek-flash occasionally returns an empty content field for
+        # long structured prompts; retry once with the stable chat model.
+        return chat(system, user, key, model="deepseek-chat", temperature=temperature,
+                    max_tokens=max_tokens, timeout=timeout)
+    if not text:
+        raise LlmError("DeepSeek returned empty content")
+    return text
 
 
 def json_chat(system: str, user: str, key: str, *, model: str = MODEL,
