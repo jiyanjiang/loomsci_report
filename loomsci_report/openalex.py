@@ -19,6 +19,9 @@ class Work:
     authors: list[str]
     year: int | None
     url: str
+    pdf_url: str = ""
+    license: str = ""
+    is_oa: bool = False
 
 
 def _abstract(value: dict | None) -> str:
@@ -56,5 +59,8 @@ def search(query: str, max_results: int = 100) -> list[Work]:
             authors=[str(a.get("author", {}).get("display_name") or "") for a in item.get("authorships") or []],
             year=item.get("publication_year"),
             url=landing,
+            pdf_url=str(best.get("pdf_url") or primary.get("pdf_url") or ""),
+            license=str(best.get("license") or primary.get("license") or ""),
+            is_oa=bool(best.get("is_oa") or primary.get("is_oa")),
         ))
     return out[:max_results]

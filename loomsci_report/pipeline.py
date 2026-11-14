@@ -14,7 +14,7 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 
-from . import arxiv, export, gate, llm, openalex, review, style, workspace
+from . import arxiv, export, figures, gate, llm, openalex, review, style, workspace
 from .arxiv import Paper
 from . import format as report_format
 
@@ -189,6 +189,7 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         works = openalex.search(query or question, max_results=100)
     except Exception:
         works = []
+    work_by_url = {w.url: w for w in works}
     for work in works:
         if work.title and work.url:
             add_paper(Paper(id=work.id, title=work.title, abstract=work.abstract,
@@ -214,10 +215,15 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
     ws = workspace.new(question, data_dir / "research", title=question[:80])
     refs = []
     for paper in papers:
+        meta = work_by_url.get(paper.url)
         source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
             "url": paper.url, "domain": gate.host(paper.url), "title": paper.title,
             "authors": paper.authors, "year": paper.published[:4],
-            "arxiv": paper.id, "license": "arXiv", "abstract": paper.abstract,
+            "arxiv": paper.id, "license": (meta.license if meta else "arXiv"),
+            "abstract": paper.abstract,
+            "pdf_url": (meta.pdf_url if meta else ""),
+            "oa": (meta.is_oa if meta else False),
+            "openalex": (meta.id if meta else ""),
         })
         refs.append(_source_ref({**source, "abstract": paper.abstract}))
     extra_sources = []
@@ -227,7 +233,8 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
             if url:
                 source = workspace.add_source(data_dir / "research", ws["code"], ws["version"], {
                     "url": url, "title": work.title, "authors": work.authors,
-                    "year": work.year, "openalex": work.id, "license": "unknown",
+                    "year": work.year, "openalex": work.id,
+                    "license": work.license or "unknown", "pdf_url": work.pdf_url, "oa": work.is_oa,
                 })
                 extra_sources.append(source)
     except Exception:
@@ -290,6 +297,14 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
                                claim=claim["claim"], url=ref["url"],
                                quote=(claim.get("evidence") or "")[:800])
 
+    update(stage="figures", progress=0.44)
+    all_source_rows = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    try:
+        figure_facts = figures.collect(data_dir / "research", ws["code"], ws["version"], all_source_rows, max_sources=8)
+    except Exception:
+        figure_facts = []
+    figure_section = figures.markdown_section(figure_facts)
+
     ranked = sorted(claims, key=lambda c: (-int(c.get("relevance") or 0), c["source_id"]))
     selected = ranked[:40]
     update(stage="synthesizing", progress=0.48, facts=len(claims), selected=len(selected))
@@ -350,6 +365,8 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
         draft = _critic(draft, allowed, key)
     except Exception:
         pass
+    if figure_section and "## 图表事实" not in draft:
+        draft = draft.rstrip() + "\n\n" + figure_section
     workspace.write_draft(data_dir / "research", ws["code"], ws["version"], draft)
     check = workspace.check(data_dir / "research", ws["code"], ws["version"], [question])
     all_sources = [json.loads(line) for line in (data_dir / "research" / "workspaces" / ws["code"] / ws["version"] / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]

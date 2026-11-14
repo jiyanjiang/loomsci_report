@@ -20,3 +20,19 @@ class ExportTests(unittest.TestCase):
         text = export._html("| A | B |\n|---|---|\n| 1 | 2 |", "T")
         self.assertIn("<table>", text)
         self.assertIn("lang=\"zh-CN\"", text)
+
+
+class FigureFactTests(unittest.TestCase):
+    def test_license_allowlist(self):
+        from loomsci_report import figures
+        self.assertTrue(figures.allowed_license("cc-by"))
+        self.assertTrue(figures.allowed_license("CC-BY-4.0"))
+        self.assertFalse(figures.allowed_license("elsevier-specific"))
+
+    def test_caption_section(self):
+        from loomsci_report import figures
+        md = figures.markdown_section([{
+            "source": "S001", "kind": "figure", "claim": "Figure 1: test",
+            "metadata": {"label": "Figure 1", "license": "cc-by"},
+        }])
+        self.assertIn("| [S001] | figure | Figure 1 |", md)

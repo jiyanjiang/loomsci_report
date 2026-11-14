@@ -70,7 +70,8 @@ def add_source(root: Path, code: str, version: str, source: dict) -> dict:
     return item
 
 
-def add_fact(root: Path, code: str, version: str, *, claim: str, url: str, quote: str = "") -> dict:
+def add_fact(root: Path, code: str, version: str, *, claim: str, url: str, quote: str = "",
+             kind: str = "claim", metadata: dict | None = None) -> dict:
     path = root / "workspaces" / code / version
     sources = [json.loads(line) for line in (path / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     source = next((item for item in sources if item.get("url") == url), None)
@@ -78,7 +79,8 @@ def add_fact(root: Path, code: str, version: str, *, claim: str, url: str, quote
         raise ValueError("fact source must exist")
     facts = [json.loads(line) for line in (path / "facts.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     fact = {"id": f"F{len(facts) + 1:03d}", "claim": claim[:500], "url": url,
-            "quote": quote[:2000], "source": source["id"], "grade": source["grade"]}
+            "quote": quote[:2000], "source": source["id"], "grade": source["grade"],
+            "kind": kind, "metadata": metadata or {}}
     with (path / "facts.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(fact, ensure_ascii=False) + "\n")
     return fact
