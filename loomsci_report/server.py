@@ -16,6 +16,7 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 from .arxiv import search as arxiv_search
+from .openalex import search as openalex_search
 from . import workspace
 
 DATA = Path(os.environ["LOOMSCI_APP_DATA_DIR"])
@@ -50,8 +51,9 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
         update(job_id, status="running", stage="searching", started_at=time.time())
         papers = arxiv_search(query or question, max_results=100)
         ws = workspace.new(question, DATA / "research", title=question[:80])
+        arxiv_sources = []
         for paper in papers:
-            workspace.add_source(DATA / "research", ws["code"], ws["version"], {
+            source = workspace.add_source(DATA / "research", ws["code"], ws["version"], {
                 "url": paper.url,
                 "domain": "arxiv.org",
                 "title": paper.title,
@@ -60,13 +62,26 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
                 "arxiv": paper.id,
                 "license": "arXiv",
             })
+            arxiv_sources.append(source)
+            sentence = (paper.abstract.split(". ")[0] if paper.abstract else paper.title).strip()
+            workspace.add_fact(DATA / "research", ws["code"], ws["version"], claim=sentence, url=paper.url, quote=paper.abstract[:500])
+        try:
+            for work in openalex_search(query or question, max_results=10):
+                url = ("https://doi.org/" + work.doi) if work.doi else work.url
+                if url:
+                    workspace.add_source(DATA / "research", ws["code"], ws["version"], {
+                        "url": url, "title": work.title, "authors": work.authors,
+                        "year": work.year, "openalex": work.id, "license": "unknown",
+                    })
+        except Exception:
+            pass
         update(job_id, stage="writing", found=len(papers), workspace=ws)
         title = question or "Research report"
         lines = ["# " + title, "", "## Abstract", "", f"This is an evidence-mapped draft based on {len(papers)} arXiv records retrieved for the question. It is not yet a validated Perspective synthesis.", "", "## Question", "", question, ""]
-        lines += ["## Evidence map", "", "| arXiv | Year | First author | Title |", "|---|---|---|---|"]
-        for p in papers:
-            author = p.authors[0] if p.authors else "unknown"
-            lines.append(f"| {p.id} | {p.published} | {author} | {p.title} |")
+        lines += ["## Evidence map", "", "| Source | arXiv | Year | First author | Title |", "|---|---|---|---|---|"]
+        for source, paper in zip(arxiv_sources, papers):
+            author = paper.authors[0] if paper.authors else "unknown"
+            lines.append(f"| [{source['id']}] | {paper.id} | {paper.published} | {author} | {paper.title} |")
         lines += ["", "## Themes", ""]
         if papers:
             lines.append("The retrieved set is concentrated in topological superconductivity, Majorana modes, and material/platform studies. The table is the evidence inventory; it is not yet a synthesis of mechanisms.")
@@ -76,9 +91,16 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
         lines += ["## References", ""]
         for p in papers:
             lines.append(f"- [{p.id}]({p.url}) {p.title} ({p.published})")
-        body = "\n".join(lines) + "\n"
+        draft = "\n".join(lines) + "\n"
+        workspace.write_draft(DATA / "research", ws["code"], ws["version"], draft)
+        check = workspace.check(DATA / "research", ws["code"], ws["version"], [question])
+        draft += "\n## Evidence gate\n\n" + json.dumps(check, ensure_ascii=False, indent=2) + "\n"
+        body = draft
         client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
-        item = client.create_item(app="report", type="report.report", title="", body=body, tags=["report", "physics", "arxiv"])
+        tags = ["report", "physics", "arxiv", "openalex"]
+        if check.get("ok"):
+            tags.append("verified")
+        item = client.create_item(app="report", type="report.report", title="", body=body, tags=tags)
         summary = workspace.summary(DATA / "research", ws["code"], ws["version"])
         update(job_id, status="done", stage="done", item_id=item["id"], papers=len(papers),
                workspace=ws, workspace_summary=summary, finished_at=time.time())

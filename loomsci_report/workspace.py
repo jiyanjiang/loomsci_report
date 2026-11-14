@@ -7,6 +7,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from . import gate
 
 CODE_RE = re.compile(r"^r-[0-9a-f]{12}$")
 
@@ -61,10 +62,39 @@ def add_source(root: Path, code: str, version: str, source: dict) -> dict:
         return next(item for item in sources if item.get("url") == url)
     item = dict(source)
     item["id"] = f"S{len(sources) + 1:03d}"
+    item["domain"] = str(item.get("domain") or gate.host(url))
+    item["grade"] = str(item.get("grade") or gate.grade_for(url))
     item["retrieved_at"] = now()
     with (path / "sources.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(item, ensure_ascii=False) + "\n")
     return item
+
+
+def add_fact(root: Path, code: str, version: str, *, claim: str, url: str, quote: str = "") -> dict:
+    path = root / "workspaces" / code / version
+    sources = [json.loads(line) for line in (path / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    source = next((item for item in sources if item.get("url") == url), None)
+    if source is None:
+        raise ValueError("fact source must exist")
+    facts = [json.loads(line) for line in (path / "facts.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    fact = {"id": f"F{len(facts) + 1:03d}", "claim": claim[:500], "url": url,
+            "quote": quote[:2000], "source": source["id"], "grade": source["grade"]}
+    with (path / "facts.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(fact, ensure_ascii=False) + "\n")
+    return fact
+
+
+def write_draft(root: Path, code: str, version: str, text: str) -> None:
+    (root / "workspaces" / code / version / "DRAFT.md").write_text(text, encoding="utf-8")
+
+
+def check(root: Path, code: str, version: str, query_terms: list[str] | None = None) -> dict:
+    path = root / "workspaces" / code / version
+    draft = (path / "DRAFT.md").read_text(encoding="utf-8")
+    sources = [json.loads(line) for line in (path / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    result = gate.evaluate(draft, sources, query_terms=query_terms)
+    (path / "check.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return result
 
 
 def summary(root: Path, code: str, version: str) -> dict:
@@ -72,4 +102,5 @@ def summary(root: Path, code: str, version: str) -> dict:
     sources = [json.loads(line) for line in (path / "sources.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     facts = [json.loads(line) for line in (path / "facts.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     domains = sorted({str(s.get("domain") or "") for s in sources if s.get("domain")})
-    return {"sources": len(sources), "facts": len(facts), "domains": domains}
+    check_data = _json(path / "check.json", {})
+    return {"sources": len(sources), "facts": len(facts), "domains": domains, "check": check_data}
