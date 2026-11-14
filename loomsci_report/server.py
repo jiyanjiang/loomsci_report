@@ -16,6 +16,7 @@ from pathlib import Path
 
 from loomsci_core.sdk import CoreClient
 from .arxiv import search as arxiv_search
+from . import workspace
 
 DATA = Path(os.environ["LOOMSCI_APP_DATA_DIR"])
 JOBS = DATA / "jobs.json"
@@ -48,7 +49,18 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
     try:
         update(job_id, status="running", stage="searching", started_at=time.time())
         papers = arxiv_search(query or question, max_results=100)
-        update(job_id, stage="writing", found=len(papers))
+        ws = workspace.new(question, DATA / "research", title=question[:80])
+        for paper in papers:
+            workspace.add_source(DATA / "research", ws["code"], ws["version"], {
+                "url": paper.url,
+                "domain": "arxiv.org",
+                "title": paper.title,
+                "authors": paper.authors,
+                "year": paper.published[:4],
+                "arxiv": paper.id,
+                "license": "arXiv",
+            })
+        update(job_id, stage="writing", found=len(papers), workspace=ws)
         title = question or "Research report"
         lines = ["# " + title, "", "## Abstract", "", f"This is an evidence-mapped draft based on {len(papers)} arXiv records retrieved for the question. It is not yet a validated Perspective synthesis.", "", "## Question", "", question, ""]
         lines += ["## Evidence map", "", "| arXiv | Year | First author | Title |", "|---|---|---|---|"]
@@ -67,7 +79,9 @@ def run_job(job_id: str, question: str, query: str = "") -> None:
         body = "\n".join(lines) + "\n"
         client = CoreClient(os.environ["LOOMSCI_CORE_URL"], os.environ["LOOMSCI_APP_TOKEN"])
         item = client.create_item(app="report", type="report.report", title="", body=body, tags=["report", "physics", "arxiv"])
-        update(job_id, status="done", stage="done", item_id=item["id"], papers=len(papers), finished_at=time.time())
+        summary = workspace.summary(DATA / "research", ws["code"], ws["version"])
+        update(job_id, status="done", stage="done", item_id=item["id"], papers=len(papers),
+               workspace=ws, workspace_summary=summary, finished_at=time.time())
     except Exception as exc:  # noqa: BLE001 - job boundary
         update(job_id, status="failed", stage="failed", error=str(exc), finished_at=time.time())
 
