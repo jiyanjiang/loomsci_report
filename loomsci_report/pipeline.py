@@ -21,7 +21,10 @@ SYSTEM = (
     "不得凭记忆补充事实、数字、引文或 URL。"
     "每个事实性结论后必须保留来源编号，如 [S001]。"
     "区分事实、推断与判断；证据不足时明确写“证据不足”。"
-    "默认使用简体中文写作，术语首次出现可保留英文。"
+    "默认使用简体中文写作，术语首次出现可保留英文。\n"
+    "写作遵循《LoomSci Report · Perspective 写作标准》："
+    "开篇给问题与阅读路线图；一段一个认知任务；每个概念按直觉层/技术层/意义层展开；"
+    "类比只用于降低门槛；每节标题是问题或判断；结论回答开篇。"
 )
 
 
@@ -114,8 +117,10 @@ def _synthesize(question: str, claims: list[dict], refs: list[dict], key: str) -
     )
     data = llm.json_chat(
         "你是研究主编。基于 claim 设计一篇中文 Perspective。输出 JSON："
-        '{"title":"...","thesis":"...","sections":[{"title":"...","angle":"...","claim_ids":["S001"]}]}。'
-        "4-5 节；论点必须有张力且可证伪；每节 6-12 条 claim；不得引入新事实。",
+        '{"title":"...","thesis":"...","reader_model":"...","roadmap":["..."],'
+        '"sections":[{"title":"...","question":"...","angle":"...","claim_ids":["S001"]}]}。'
+        "4-5 节；标题必须是问题或判断，不是名词短语；roadmap 2-4 句；"
+        "每节 6-12 条 claim；论点必须有张力且可证伪；不得引入新事实。",
         f"问题：{question}\n\n可用 claim：\n{compact}",
         key, temperature=0.2, max_tokens=2200,
     )
@@ -131,7 +136,10 @@ def _synthesize(question: str, claims: list[dict], refs: list[dict], key: str) -
         ordered = [c["source_id"] for c in sorted(claims, key=lambda x: -int(x.get("relevance") or 0))]
         sections = [{"title": f"证据视角 {i + 1}", "angle": "按证据归纳", "claim_ids": ordered[i::4][:12]} for i in range(4)]
     return {"title": _clean(data.get("title") or question, 120),
-            "thesis": _clean(data.get("thesis"), 700), "sections": sections[:5]}
+            "thesis": _clean(data.get("thesis"), 700),
+            "reader_model": _clean(data.get("reader_model"), 400),
+            "roadmap": [_clean(x, 300) for x in (data.get("roadmap") or []) if str(x).strip()][:4],
+            "sections": sections[:5]}
 
 
 def _write_section(question: str, thesis: str, section: dict, claims: list[dict], key: str) -> str:
@@ -142,8 +150,11 @@ def _write_section(question: str, thesis: str, section: dict, claims: list[dict]
     )
     return llm.chat(
         SYSTEM + " 只写这一节；不要重复其他节；保留来源编号。",
-        f"总问题：{question}\n中心论点：{thesis}\n本节标题：{section['title']}\n本节角度：{section['angle']}\n"
-        f"可用证据：\n{refs}\n\n写 500-800 字中文分析。先给判断，再用证据支撑，最后指出反例/边界。",
+        f"总问题：{question}\n中心论点：{thesis}\n本节标题：{section['title']}\n"
+        f"本节问题：{section.get('question') or section.get('angle') or ''}\n本节角度：{section['angle']}\n"
+        f"可用证据：\n{refs}\n\n"
+        "写 700-1000 字中文分析。第一段先降低门槛：本节要解决什么问题、读者需要先知道什么；"
+        "之后按‘证据→竞争解释/边界→判断’推进。每段只做一个认知任务，2-5 句；不要用 bullet。",
         key, temperature=0.35, max_tokens=1800,
     )
 
@@ -286,6 +297,10 @@ def generate(job_id: str, question: str, query: str, data_dir: Path, update) -> 
 ## 中心论点
 
 {plan['thesis']}
+
+## 阅读路线图
+
+{(chr(10).join(f"{i+1}. {x}" for i, x in enumerate(plan.get("roadmap") or [])) or "先看证据能支持什么，再看它不能支持什么。")}
 
 """ + "\n\n".join(sections) + """
 
